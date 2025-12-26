@@ -20,6 +20,14 @@ abstract class TripsEvent extends Equatable {
 
 class TripsRequested extends TripsEvent {}
 
+class TripCreated extends TripsEvent {
+  final String name;
+  final String description;
+  TripCreated({required this.name, required this.description});
+  @override
+  List<Object?> get props => [name, description];
+}
+
 abstract class TripsState extends Equatable {
   const TripsState();
   @override
@@ -87,6 +95,18 @@ class TripsBloc extends Bloc<TripsEvent, TripsState> {
           }
         } catch (_) {}
         emit(const TripsFailure('Failed to load trips'));
+      }
+    });
+    on<TripCreated>((event, emit) async {
+      try {
+        await _api.post(
+          'trips/',
+          data: {'name': event.name, 'description': event.description},
+        );
+        // Reload trips list
+        add(TripsRequested());
+      } catch (e) {
+        emit(const TripsFailure('Failed to create trip'));
       }
     });
   }

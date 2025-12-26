@@ -14,30 +14,46 @@ class ApiClient {
 
   String? _accessToken;
 
+  ApiClient({String? initialToken}) {
+    _accessToken = initialToken;
+    _setupInterceptors();
+  }
+
+  void _setupInterceptors() {
+    _dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          // Always include token if available
+          if (_accessToken != null) {
+            options.headers['Authorization'] = 'Bearer $_accessToken';
+          }
+          return handler.next(options);
+        },
+        onError: (DioException error, handler) {
+          // Pass error up - caller will handle 401
+          return handler.next(error);
+        },
+      ),
+    );
+  }
+
+  // ignore: unnecessary_getters_setters
   set accessToken(String? token) {
     _accessToken = token;
   }
+
+  // ignore: unnecessary_getters_setters
+  String? get accessToken => _accessToken;
 
   Future<Response<dynamic>> post(
     String path, {
     dynamic data,
     Map<String, dynamic>? query,
   }) {
-    return _dio.post(
-      path,
-      data: data,
-      queryParameters: query,
-      options: _authOptions(),
-    );
+    return _dio.post(path, data: data, queryParameters: query);
   }
 
   Future<Response<dynamic>> get(String path, {Map<String, dynamic>? query}) {
-    return _dio.get(path, queryParameters: query, options: _authOptions());
+    return _dio.get(path, queryParameters: query);
   }
-
-  Options _authOptions() => Options(
-    headers: _accessToken == null
-        ? null
-        : {'Authorization': 'Bearer $_accessToken'},
-  );
 }

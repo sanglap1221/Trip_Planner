@@ -1,17 +1,49 @@
+# Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+.pytest_cache/
+coverage.xml
+.coverage
+
+# Virtual Environments
 env/
 .venv/
 venv/
+
+# Build and Distribution
 build/
 dist/
+*.egg-info/
+
+# Database
 db.sqlite3
-staticfiles/
-.env
-.DS_Store
-*.log
-coverage.xml
-.pytest_cache/
 *.sqlite3
+
+# Static files
+staticfiles/
+mediafiles/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Migrations cache
+api/migrations/__pycache__/

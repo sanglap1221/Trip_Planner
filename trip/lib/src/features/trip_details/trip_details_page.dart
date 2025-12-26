@@ -1,7 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/status.dart' as ws_status;
 import 'package:trip/src/services/api_client.dart';
+import 'package:trip/src/features/auth/auth_bloc.dart';
+import 'package:trip/src/features/trip_details/itinerary_bloc.dart';
+import 'package:trip/src/features/trip_details/polls_bloc.dart';
+import 'package:trip/src/features/trip_details/chat_bloc.dart';
+import 'package:trip/src/features/trip_details/widgets.dart';
 import 'dart:convert';
 
 class TripDetailsPage extends StatefulWidget {
@@ -50,147 +56,198 @@ class _TripDetailsPageState extends State<TripDetailsPage>
       body: TabBarView(
         controller: _tab,
         children: [
-          ItineraryTab(tripId: widget.tripId),
-          PollsTab(tripId: widget.tripId),
-          ChatTab(tripId: widget.tripId),
+          BlocProvider(
+            create: (context) =>
+                ItineraryBloc(context.read<ApiClient>())
+                  ..add(ItineraryLoadRequested(widget.tripId)),
+            child: ItineraryTab(tripId: widget.tripId),
+          ),
+          BlocProvider(
+            create: (context) =>
+                PollsBloc(context.read<ApiClient>())
+                  ..add(PollsLoadRequested(widget.tripId)),
+            child: PollsTab(tripId: widget.tripId),
+          ),
+          BlocProvider(
+            create: (context) =>
+                ChatBloc(context.read<ApiClient>())
+                  ..add(ChatLoadRequested(widget.tripId)),
+            child: ChatTab(tripId: widget.tripId),
+          ),
         ],
       ),
     );
   }
 }
 
-class ItineraryTab extends StatefulWidget {
+class ItineraryTab extends StatelessWidget {
   final int tripId;
   const ItineraryTab({super.key, required this.tripId});
 
   @override
-  State<ItineraryTab> createState() => _ItineraryTabState();
-}
-
-class _ItineraryTabState extends State<ItineraryTab> {
-  List<Map<String, dynamic>> _items = [];
-  bool _loading = true;
-
-  Future<void> _load() async {
-    setState(() => _loading = true);
-    final api = ApiClient();
-    final res = await api.get(
-      'itinerary-items/',
-      query: {'trip': widget.tripId},
-    );
-    setState(() {
-      _items = List<Map<String, dynamic>>.from(res.data as List);
-      _items.sort((a, b) => (a['order'] as int).compareTo(b['order'] as int));
-      _loading = false;
-    });
-  }
-
-  Future<void> _reorder(int oldIndex, int newIndex) async {
-    final list = List<Map<String, dynamic>>.from(_items);
-    if (newIndex > oldIndex) newIndex -= 1;
-    final item = list.removeAt(oldIndex);
-    list.insert(newIndex, item);
-    setState(() => _items = list);
-    final orderIds = list.map((e) => e['id']).toList();
-    final api = ApiClient();
-    await api.post(
-      'trips/${widget.tripId}/reorder-itinerary/',
-      data: {'order': orderIds},
-    );
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    if (_loading) return const Center(child: CircularProgressIndicator());
-    return ReorderableListView.builder(
-      itemCount: _items.length,
-      onReorder: _reorder,
-      itemBuilder: (context, index) {
-        final it = _items[index];
-        return ListTile(
-          key: ValueKey(it['id']),
-          title: Text(it['title'] as String? ?? 'Item'),
-          subtitle: (it['description'] as String?)?.isEmpty ?? true
-              ? null
-              : Text(it['description'] as String),
-        );
+    return BlocListener<ItineraryBloc, ItineraryState>(
+      listener: (context, state) {
+        if (state is ItineraryError &&
+            state.message.contains('Session expired')) {
+          context.read<AuthBloc>().add(AuthTokenExpired());
+        }
       },
+      child: BlocBuilder<ItineraryBloc, ItineraryState>(
+        builder: (context, state) {
+          if (state is ItineraryLoading) {
+            return const LoadingStateWidget(message: 'Loading itinerary...');
+          }
+
+          if (state is ItineraryEmpty) {
+            return EmptyStateWidget(
+              title: 'No itinerary yet',
+              subtitle: 'Add your first destination to get started',
+              icon: Icons.map_outlined,
+              onAction: () {
+                context.read<ItineraryBloc>().add(
+                  ItineraryLoadRequested(tripId),
+                );
+              },
+              actionLabel: 'Refresh',
+            );
+          }
+
+          if (state is ItineraryError) {
+            return ErrorStateWidget(
+              message: state.message,
+              onRetry: () {
+                context.read<ItineraryBloc>().add(
+                  ItineraryLoadRequested(tripId),
+                );
+              },
+            );
+          }
+
+          if (state is ItineraryLoaded) {
+            return RefreshIndicator(
+              onRefresh: () async {
+                context.read<ItineraryBloc>().add(
+                  ItineraryLoadRequested(tripId),
+                );
+                await Future.delayed(const Duration(milliseconds: 500));
+              },
+              child: ReorderableListView.builder(
+                itemCount: state.items.length,
+                onReorder: (oldIndex, newIndex) {
+                  context.read<ItineraryBloc>().add(
+                    ItineraryReorderRequested(tripId, oldIndex, newIndex),
+                  );
+                },
+                itemBuilder: (context, index) {
+                  final it = state.items[index];
+                  return ListTile(
+                    key: ValueKey(it['id']),
+                    leading: Icon(Icons.drag_handle),
+                    title: Text(it['title'] as String? ?? 'Untitled'),
+                    subtitle: (it['description'] as String?)?.isEmpty ?? true
+                        ? null
+                        : Text(it['description'] as String),
+                  );
+                },
+              ),
+            );
+          }
+
+          return const SizedBox.shrink();
+        },
+      ),
     );
   }
 }
 
-class PollsTab extends StatefulWidget {
+class PollsTab extends StatelessWidget {
   final int tripId;
   const PollsTab({super.key, required this.tripId});
 
   @override
-  State<PollsTab> createState() => _PollsTabState();
-}
-
-class _PollsTabState extends State<PollsTab> {
-  List<Map<String, dynamic>> _polls = [];
-  bool _loading = true;
-
-  Future<void> _load() async {
-    setState(() => _loading = true);
-    final api = ApiClient();
-    final res = await api.get('polls/', query: {'trip': widget.tripId});
-    setState(() {
-      _polls = List<Map<String, dynamic>>.from(res.data as List);
-      _loading = false;
-    });
-  }
-
-  Future<void> _vote(int pollId, int optionId) async {
-    final api = ApiClient();
-    await api.post('polls/$pollId/vote/', data: {'option_id': optionId});
-    _load();
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    if (_loading) return const Center(child: CircularProgressIndicator());
-    return RefreshIndicator(
-      onRefresh: _load,
-      child: ListView.builder(
-        itemCount: _polls.length,
-        itemBuilder: (context, i) {
-          final p = _polls[i];
-          final options = List<Map<String, dynamic>>.from(p['options'] as List);
-          return Card(
-            margin: const EdgeInsets.all(8),
-            child: Padding(
-              padding: const EdgeInsets.all(12.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    p['question'] as String,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 8),
-                  for (final o in options)
-                    ListTile(
-                      title: Text(o['text'] as String),
-                      trailing: Text('${o['votes_count'] ?? 0}'),
-                      onTap: () => _vote(p['id'] as int, o['id'] as int),
+    return BlocListener<PollsBloc, PollsState>(
+      listener: (context, state) {
+        if (state is PollsError && state.message.contains('Session expired')) {
+          context.read<AuthBloc>().add(AuthTokenExpired());
+        }
+      },
+      child: BlocBuilder<PollsBloc, PollsState>(
+        builder: (context, state) {
+          if (state is PollsLoading) {
+            return const LoadingStateWidget(message: 'Loading polls...');
+          }
+
+          if (state is PollsEmpty) {
+            return EmptyStateWidget(
+              title: 'No polls yet',
+              subtitle: 'Create a poll to let your group decide',
+              icon: Icons.poll_outlined,
+              onAction: () {
+                context.read<PollsBloc>().add(PollsLoadRequested(tripId));
+              },
+              actionLabel: 'Refresh',
+            );
+          }
+
+          if (state is PollsError) {
+            return ErrorStateWidget(
+              message: state.message,
+              onRetry: () {
+                context.read<PollsBloc>().add(PollsLoadRequested(tripId));
+              },
+            );
+          }
+
+          if (state is PollsLoaded) {
+            return RefreshIndicator(
+              onRefresh: () async {
+                context.read<PollsBloc>().add(PollsLoadRequested(tripId));
+                await Future.delayed(const Duration(milliseconds: 500));
+              },
+              child: ListView.builder(
+                itemCount: state.polls.length,
+                itemBuilder: (context, i) {
+                  final p = state.polls[i];
+                  final options = List<Map<String, dynamic>>.from(
+                    p['options'] as List,
+                  );
+                  return Card(
+                    margin: const EdgeInsets.all(8),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            p['question'] as String? ?? 'Untitled Poll',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          const SizedBox(height: 8),
+                          for (final o in options)
+                            ListTile(
+                              title: Text(o['text'] as String? ?? ''),
+                              trailing: Text('${o['votes_count'] ?? 0}'),
+                              onTap: () {
+                                context.read<PollsBloc>().add(
+                                  PollsVoteRequested(
+                                    p['id'] as int,
+                                    o['id'] as int,
+                                  ),
+                                );
+                              },
+                            ),
+                        ],
+                      ),
                     ),
-                ],
+                  );
+                },
               ),
-            ),
-          );
+            );
+          }
+
+          return const SizedBox.shrink();
         },
       ),
     );
@@ -208,102 +265,14 @@ class ChatTab extends StatefulWidget {
 class _ChatTabState extends State<ChatTab> {
   final _controller = TextEditingController();
   final _scroll = ScrollController();
-  List<Map<String, dynamic>> _messages = [];
-  int? _lastId;
-  bool _loading = true;
-  bool _sending = false;
   WebSocketChannel? _channel;
-
-  Future<void> _load({bool incremental = false}) async {
-    final api = ApiClient();
-    final query = {
-      'trip': widget.tripId,
-      if (incremental && _lastId != null) 'after_id': _lastId,
-    };
-    final res = await api.get('messages/', query: query);
-    final list = List<Map<String, dynamic>>.from(res.data as List);
-    setState(() {
-      if (incremental) {
-        _messages.addAll(list);
-      } else {
-        _messages = list;
-      }
-      if (_messages.isNotEmpty) _lastId = _messages.last['id'] as int;
-      _loading = false;
-    });
-    await Future.delayed(const Duration(milliseconds: 50));
-    _scroll.jumpTo(_scroll.position.maxScrollExtent);
-  }
-
-  Future<void> _send() async {
-    if (_controller.text.trim().isEmpty) return;
-    setState(() => _sending = true);
-    final content = _controller.text.trim();
-    _controller.clear();
-    final optimistic = {
-      'id': (_lastId ?? 0) + 1,
-      'content': content,
-      'sender': {'username': 'me'},
-      'created_at': DateTime.now().toIso8601String(),
-    };
-    setState(() {
-      _messages.add(optimistic);
-      _lastId = optimistic['id'] as int;
-    });
-    final api = ApiClient();
-    try {
-      await api.post(
-        'messages/',
-        data: {'trip': widget.tripId, 'content': content},
-      );
-      await _load(incremental: true);
-    } finally {
-      setState(() => _sending = false);
-    }
-  }
+  late ChatBloc _chatBloc;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _chatBloc = context.read<ChatBloc>();
     _connectWs();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_loading) return const Center(child: CircularProgressIndicator());
-    return Column(
-      children: [
-        Expanded(
-          child: ListView.builder(
-            controller: _scroll,
-            itemCount: _messages.length,
-            itemBuilder: (context, i) {
-              final m = _messages[i];
-              return ListTile(title: Text(m['content'] as String));
-            },
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _controller,
-                  decoration: const InputDecoration(hintText: 'Message...'),
-                ),
-              ),
-              const SizedBox(width: 8),
-              IconButton(
-                onPressed: _sending ? null : _send,
-                icon: const Icon(Icons.send),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
   }
 
   void _connectWs() {
@@ -312,10 +281,9 @@ class _ChatTabState extends State<ChatTab> {
         'API_BASE_URL',
         defaultValue: 'http://10.0.2.2:8000/api/',
       );
-      // convert http://host:8000/api/ -> ws://host:8000/ws/trips/{id}/
       final uri = Uri.parse(base);
       final scheme = uri.scheme == 'https' ? 'wss' : 'ws';
-      final apiBasePath = uri.path; // e.g., /api/
+      final apiBasePath = uri.path;
       final rootPath = apiBasePath.endsWith('/')
           ? apiBasePath.substring(0, apiBasePath.length - 1)
           : apiBasePath;
@@ -335,10 +303,7 @@ class _ChatTabState extends State<ChatTab> {
           final decoded = _tryDecodeJson(data);
           if (decoded is Map && decoded['type'] == 'chat') {
             final msg = Map<String, dynamic>.from(decoded['message'] as Map);
-            setState(() {
-              _messages.add(msg);
-              _lastId = msg['id'] as int? ?? _lastId;
-            });
+            _chatBloc.add(ChatMessageReceived(msg));
           }
         } catch (_) {}
       });
@@ -355,6 +320,158 @@ class _ChatTabState extends State<ChatTab> {
     } catch (_) {
       return null;
     }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocListener<ChatBloc, ChatState>(
+      listener: (context, state) {
+        if (state is ChatError && state.message.contains('Session expired')) {
+          context.read<AuthBloc>().add(AuthTokenExpired());
+        }
+      },
+      child: BlocBuilder<ChatBloc, ChatState>(
+        builder: (context, state) {
+          if (state is ChatLoading) {
+            return const LoadingStateWidget(message: 'Loading chat...');
+          }
+
+          if (state is ChatEmpty) {
+            return Column(
+              children: [
+                Expanded(
+                  child: EmptyStateWidget(
+                    title: 'Start the conversation 👋',
+                    subtitle: 'Be the first to message your travel group',
+                    icon: Icons.chat_outlined,
+                    onAction: () {
+                      context.read<ChatBloc>().add(
+                        ChatLoadRequested(widget.tripId),
+                      );
+                    },
+                    actionLabel: 'Refresh',
+                  ),
+                ),
+                _buildMessageInput(context),
+              ],
+            );
+          }
+
+          if (state is ChatError) {
+            return Column(
+              children: [
+                Expanded(
+                  child: ErrorStateWidget(
+                    message: state.message,
+                    onRetry: () {
+                      context.read<ChatBloc>().add(
+                        ChatLoadRequested(widget.tripId),
+                      );
+                    },
+                  ),
+                ),
+                _buildMessageInput(context),
+              ],
+            );
+          }
+
+          if (state is ChatLoaded) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (_scroll.hasClients) {
+                _scroll.jumpTo(_scroll.position.maxScrollExtent);
+              }
+            });
+
+            return Column(
+              children: [
+                Expanded(
+                  child: state.messages.isEmpty
+                      ? EmptyStateWidget(
+                          title: 'No messages yet',
+                          subtitle: 'Send the first message',
+                          icon: Icons.chat_outlined,
+                        )
+                      : RefreshIndicator(
+                          onRefresh: () async {
+                            context.read<ChatBloc>().add(
+                              ChatLoadRequested(widget.tripId),
+                            );
+                            await Future.delayed(
+                              const Duration(milliseconds: 500),
+                            );
+                          },
+                          child: ListView.builder(
+                            controller: _scroll,
+                            itemCount: state.messages.length,
+                            itemBuilder: (context, i) {
+                              final m = state.messages[i];
+                              final sender = m['sender'] as Map?;
+                              final username =
+                                  sender?['username'] as String? ?? 'Unknown';
+                              return ListTile(
+                                title: Text(m['content'] as String? ?? ''),
+                                subtitle: Text(username),
+                              );
+                            },
+                          ),
+                        ),
+                ),
+                _buildMessageInput(context),
+              ],
+            );
+          }
+
+          return const SizedBox.shrink();
+        },
+      ),
+    );
+  }
+
+  Widget _buildMessageInput(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(8.0),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _controller,
+              decoration: const InputDecoration(
+                hintText: 'Message...',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          BlocBuilder<ChatBloc, ChatState>(
+            builder: (context, state) {
+              final isSending = state is ChatLoaded && state.isSending;
+              return IconButton(
+                onPressed: isSending
+                    ? null
+                    : () {
+                        if (_controller.text.trim().isNotEmpty) {
+                          context.read<ChatBloc>().add(
+                            ChatMessageSent(
+                              widget.tripId,
+                              _controller.text.trim(),
+                            ),
+                          );
+                          _controller.clear();
+                        }
+                      },
+                icon: isSending
+                    ? const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.send),
+              );
+            },
+          ),
+        ],
+      ),
+    );
   }
 
   @override

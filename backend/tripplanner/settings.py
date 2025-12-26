@@ -208,15 +208,19 @@ TEMPLATES = [
 WSGI_APPLICATION = "tripplanner.wsgi.application"
 
 # Database
-DATABASES = {
-    "default": dj_database_url.parse(
-        os.getenv(
-            "DATABASE_URL",
-            "postgres://postgres:postgres@db:5432/tripplanner",  # docker-compose default
-        ),
-        conn_max_age=600,
-    )
-}
+DATABASE_URL = os.getenv("DATABASE_URL")
+if DATABASE_URL:
+    DATABASES = {
+        "default": dj_database_url.parse(DATABASE_URL, conn_max_age=600)
+    }
+else:
+    # Default to SQLite for local development
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+        }
+    }
 
 # Cache (for rate limiting). Defaults to local-memory cache.
 CACHES = {
@@ -267,9 +271,6 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
 }
-
-# SimpleJWT
-from rest_framework_simplejwt.authentication import JWTAuthentication  # noqa: E402
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=int(os.getenv("ACCESS_TOKEN_MIN", "60"))),

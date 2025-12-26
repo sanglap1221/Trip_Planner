@@ -31,13 +31,17 @@ class TripApp extends StatelessWidget {
           theme: ThemeData(
             colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
           ),
+          debugShowCheckedModeBanner: false,
           home: BlocBuilder<AuthBloc, AuthState>(
             builder: (context, state) {
-              if (state is Authenticated) return const TripsPage();
-              if (state is AuthLoading)
+              if (state is Authenticated) {
+                return const TripsPage();
+              }
+              if (state is AuthLoading) {
                 return const Scaffold(
                   body: Center(child: CircularProgressIndicator()),
                 );
+              }
               return const LoginPage();
             },
           ),

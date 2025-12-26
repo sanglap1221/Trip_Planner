@@ -17,6 +17,10 @@ class AuthLoginRequested extends AuthEvent {
   AuthLoginRequested(this.username, this.password);
 }
 
+class AuthLogoutRequested extends AuthEvent {}
+
+class AuthTokenExpired extends AuthEvent {}
+
 // States
 abstract class AuthState extends Equatable {
   @override
@@ -47,13 +51,24 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     on<AuthStarted>((event, emit) async {
       emit(AuthInitial());
     });
+    on<AuthLogoutRequested>((event, emit) async {
+      await _repo.logout();
+      emit(AuthInitial());
+    });
+    on<AuthTokenExpired>((event, emit) async {
+      await _repo.logout();
+      emit(AuthFailure('Session expired. Please log in again.'));
+    });
     on<AuthLoginRequested>((event, emit) async {
       emit(AuthLoading());
       try {
         final tokens = await _repo.login(event.username, event.password);
+        print('Login response: $tokens');
         emit(Authenticated(tokens['access'] as String));
-      } catch (e) {
-        emit(AuthFailure('Login failed'));
+      } catch (e, stackTrace) {
+        print('Login error: $e');
+        print('Stack trace: $stackTrace');
+        emit(AuthFailure('Login failed: ${e.toString()}'));
       }
     });
   }
