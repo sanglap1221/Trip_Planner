@@ -1,0 +1,27 @@
+version: "3.9"
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: tripplanner
+      POSTGRES_USER: tripuser
+      POSTGRES_PASSWORD: trippass
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+  api:
+    build: ./backend
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: postgres://tripuser:trippass@db:5432/tripplanner
+      DJANGO_SECRET_KEY: dev-secret
+      DEBUG: "true"
+      ALLOWED_HOSTS: "*"
+    ports:
+      - "8000:8000"
+    command: bash -c "python manage.py migrate && daphne -b 0.0.0.0 -p 8000 tripplanner.asgi:application"
+
+volumes:
+  db_data:
