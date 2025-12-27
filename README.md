@@ -41,6 +41,66 @@ Configure API base via Dart define: `--dart-define=API_BASE_URL=http://localhost
 
 ## CI/CD
 
+## Deployment to Render
+
+### Step 1: Create Postgres Database on Render
+
+1. Go to https://dashboard.render.com
+2. Click **New** → **PostgreSQL**
+3. Name: `trip-db` (or any name)
+4. **Copy the Internal Connection String** (looks like: `postgres://user:pwd@host:port/db`)
+
+### Step 2: Create Web Service on Render
+
+1. Click **New** → **Web Service**
+2. Connect your GitHub repo
+3. **Settings:**
+   - Name: `trip-plan` (or any name)
+   - Environment: **Docker**
+   - Root Directory: `backend`
+   - Instance Type: **Free** (or paid for production)
+
+### Step 3: Add Environment Variables (CRITICAL)
+
+In Render dashboard → Web Service → Environment:
+
+| Variable               | Value                    | Purpose                     |
+| ---------------------- | ------------------------ | --------------------------- |
+| `DJANGO_SECRET_KEY`    | _(Click Generate)_       | Security - must be random   |
+| `DATABASE_URL`         | _(Paste from Step 1)_    | PostgreSQL connection       |
+| `DJANGO_ALLOWED_HOSTS` | `trip-plan.onrender.com` | Your Render domain          |
+| `DJANGO_DEBUG`         | `False`                  | Must be False in production |
+| `PYTHONUNBUFFERED`     | `1`                      | Proper logging              |
+
+**❌ DO NOT:**
+
+- Commit `.env` file
+- Hardcode secrets in code
+- Use `DEBUG=True` in production
+
+### Step 4: Deploy
+
+Click **Deploy** and wait for the build to complete.
+
+### Step 5: Verify Deployment
+
+Once deployed, visit:
+
+```
+https://trip-plan.onrender.com/api/docs/
+```
+
+If Swagger UI opens → ✅ **Deployment successful!**
+
+You can now login with sample user:
+
+- Username: `demo`
+- Password: `demo123`
+
+(Note: Sample data will need to be added via Django admin or management command)
+
+---
+
 ## Deployment
 
 Deploy backend to Render/Cloud Run/DO/AWS using the Dockerfile and set `DATABASE_URL`, `DJANGO_SECRET_KEY`, and allowed hosts. Use a managed PostgreSQL.
