@@ -24,10 +24,11 @@ if not SECRET_KEY:
     SECRET_KEY = "insecure-local-dev-only-key"
 
 # DEBUG: False in production, True in local
-DEBUG = os.environ.get("DJANGO_DEBUG", "False") == "True"
+DEBUG = os.environ.get("DJANGO_DEBUG", "True") == "True"
 
 # ALLOWED_HOSTS: Set in Render (e.g., "trip-plan.onrender.com")
-ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+# For local dev: include localhost, 127.0.0.1, and Android emulator (10.0.2.2)
+ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,10.0.2.2").split(",")
 # Strip whitespace from each host
 ALLOWED_HOSTS = [h.strip() for h in ALLOWED_HOSTS]
 

@@ -277,11 +277,10 @@ class _ChatTabState extends State<ChatTab> {
 
   void _connectWs() {
     try {
-      final base = const String.fromEnvironment(
-        'API_BASE_URL',
-        defaultValue: 'http://10.0.2.2:8000/api/',
-      );
-      final uri = Uri.parse(base);
+      // Get API client to retrieve the properly normalized base URL
+      final apiClient = context.read<ApiClient>();
+      final baseUrl = apiClient.baseUrl ?? 'http://10.0.2.2:8000/api/';
+      final uri = Uri.parse(baseUrl);
       final scheme = uri.scheme == 'https' ? 'wss' : 'ws';
       final apiBasePath = uri.path;
       final rootPath = apiBasePath.endsWith('/')

@@ -32,18 +32,26 @@ class TripApp extends StatelessWidget {
             colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
           ),
           debugShowCheckedModeBanner: false,
-          home: BlocBuilder<AuthBloc, AuthState>(
-            builder: (context, state) {
+          home: BlocListener<AuthBloc, AuthState>(
+            listener: (context, state) {
               if (state is Authenticated) {
-                return const TripsPage();
+                // Set token on API client after successful login
+                api.accessToken = state.accessToken;
               }
-              if (state is AuthLoading) {
-                return const Scaffold(
-                  body: Center(child: CircularProgressIndicator()),
-                );
-              }
-              return const LoginPage();
             },
+            child: BlocBuilder<AuthBloc, AuthState>(
+              builder: (context, state) {
+                if (state is Authenticated) {
+                  return const TripsPage();
+                }
+                if (state is AuthLoading) {
+                  return const Scaffold(
+                    body: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                return const LoginPage();
+              },
+            ),
           ),
         ),
       ),

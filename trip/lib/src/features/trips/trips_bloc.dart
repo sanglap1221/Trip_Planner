@@ -60,7 +60,10 @@ class TripsBloc extends Bloc<TripsEvent, TripsState> {
   final ApiClient _api;
   TripsBloc(this._api) : super(TripsInitial()) {
     on<TripsRequested>((event, emit) async {
-      emit(TripsLoading());
+      // Only show loading if we're not already in a loaded state
+      if (state is! TripsLoaded) {
+        emit(TripsLoading());
+      }
       try {
         final res = await _api.get('trips/');
         final list = (res.data as List)
@@ -99,12 +102,24 @@ class TripsBloc extends Bloc<TripsEvent, TripsState> {
     });
     on<TripCreated>((event, emit) async {
       try {
-        await _api.post(
+        final res = await _api.post(
           'trips/',
           data: {'name': event.name, 'description': event.description},
         );
-        // Reload trips list
-        add(TripsRequested());
+        // Optimistically add the new trip to the current list
+        if (state is TripsLoaded) {
+          final currentTrips = (state as TripsLoaded).trips;
+          final newTrip = TripSummary(
+            id: res.data['id'] as int,
+            name: res.data['name'] as String,
+            description: res.data['description'] as String?,
+          );
+          final updatedTrips = [...currentTrips, newTrip];
+          emit(TripsLoaded(updatedTrips));
+        } else {
+          // If not loaded, trigger a full reload
+          add(TripsRequested());
+        }
       } catch (e) {
         emit(const TripsFailure('Failed to create trip'));
       }
